@@ -1,0 +1,83 @@
+---
+title: "St558Project1"
+author: "Logan Moy"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(httr)
+library(jsonlite)
+```
+
+# Introduction
+
+SADDASDSSDASDSDSADASD
+
+
+## Data Processing from PUMS
+
+Function that grabs variables from JSON. Looks at the variables: AGEP, GASP, GRPIP, JWAP, JWDP, JWMNP, PWGTP, FER, HHL, SCH, SCHL, SEX, ST (for 2021, 2022)/STATE (for 2023, 2024), REGION, and DIVISION
+
+```{r}
+varNames <- c("AGEP", "GASP", "GRPIP", "JWAP", "JWDP", "JWMNP", "PWGTP", "FER", "HHL", "SCH", "SCHL", "SEX", "ST", "STATE", "REGION",  "DIVISION")
+getVars <- function(url) {
+  varInfo <- GET(url)
+  parsed <- fromJSON(rawToChar(varInfo$content))
+  vars <- parsed$variables
+  vars <- vars[names(vars) %in% varNames]
+  return (vars)
+}
+```
+
+Using the function to get variable names from years 2021-2024
+
+```{r}
+# Vars from 2021
+var2021 <- getVars("https://api.census.gov/data/2021/acs/acs1/pums/variables.json")
+
+# Vars from 2022
+var2022 <- getVars("https://api.census.gov/data/2022/acs/acs1/pums/variables.json")
+
+# Vars from 2023
+var2023 <- getVars("https://api.census.gov/data/2023/acs/acs1/pums/variables.json")
+
+# Vars from 2024
+var2024 <- getVars("https://api.census.gov/data/2024/acs/acs1/pums/variables.json")
+```
+
+Saving all lists in RDS
+
+```{r}
+variableNames <- list(var2021, var2022, var2023, var2024)
+saveRDS(variableNames, "data/variableNames")
+```
+
+Making a function to parse API data
+
+```{r}
+
+```
+
+
+Using the function to get data from years 2021-2024
+
+```{r}
+# Data from 2021
+
+# Data from 2022
+
+# Data from 2023
+
+# Data from 2024
+```
+
+
+
+```{r}
+#| echo: false
+2 * 2
+```
+

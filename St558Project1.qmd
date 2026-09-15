@@ -10,6 +10,7 @@ library(tidyverse)
 library(ggplot2)
 library(httr)
 library(jsonlite)
+library(lubridate)
 ```
 
 # Introduction
@@ -58,6 +59,93 @@ saveRDS(variableNames, "data/variableNames")
 Making a function to parse API data
 
 ```{r}
+# Loading the RDS
+levels <- readRDS("data/variableNames")
+
+# Helper function that takes url and returns output of GET as a tibble
+getUrlInfo <- function(url) {
+  dataInfo <- GET(url)
+  return (as_tibble(dataInfo))
+}
+
+
+# Helper for converting Census time codes to midpoint times
+parse_time_midpoint <- function(x) {
+  x <- as.character(x)
+  sapply(x, function(val) {
+    # Missing values
+    if (is.na(val) || val %in% c("b", "bb", "bbbb", "N.A.", "")) {
+      return(NA)
+    }
+    val <- sprintf("%04d", as.integer(val))
+    hour <- as.numeric(substr(val, 1, 2))
+    minute <- as.numeric(substr(val, 3, 4))
+    hm(sprintf("%02d:%02d", hour, minute))
+  })
+}
+
+# Helper function for selecting numeric vars in pums
+# @param pums tibble we selecting vars from
+# @param varNumeric 
+# @throws error when varNumeric does not contain numeric vars
+numVarSelect <- function(pums, varNumeric) {
+  # Check if varNumeric contains legal variables
+  legal <- c("AGEP", "GASP", "GRPIP", "JWAP", "JWDP", "JWMNP", "PWGTP")
+  if (!(all(varNumeric %in% legal))) {
+    stop("varNumeric contains variables that aren't numeric.")
+  }
+  time_vars <- c("JWAP", "JWDP")
+  # Loop that makes varNumeric variables in pums numeric, also does time midpoint
+  for (v in varNumeric) {
+    if (v %in% time_vars) {
+      pums[[v]] <- parse_time_midpoint(pums[[v]])
+
+    } else {
+      pums[[v]] <- as.numeric(pums[[v]])
+    }
+  }
+  return (pums)
+}
+
+# Helper function for returning categorical variables
+catVarSelect <- function(pums, varCategorical) {
+  
+  return (pums)
+}
+
+
+# Parses the data, uses above helper functions
+# @param url string of the url
+# @param year int the year, default 2024
+# @param varNumeric string a vector of numeric variables to return, default c("AGEP", "PWGTP") 
+# @param varCategorical string a vector of categorical variables to return, default c("SEX")
+# @returns a tibble with the specified information
+# @throws error when year is not 2021-2024
+# @throws error when varNumeric does not contain PWGTP or length < 2
+# @throws error when varCategorical length == 0
+#
+getPUMSData <- function(url, year = 2024, varNumeric = c("AGEP", "PWGTP"), varCategorical = c("SEX") ) {
+  pums <- getUrlInfo(url)
+  
+  # Check if the year is valid
+  if (!(year %in% c(2021, 2022, 2023, 2024))) {
+    stop("Invalid year given. Year must be numeric and between 2021-2024 (inclusive).")
+  }
+  
+  # Check if the varNumeric is valid
+  if ((!("PWGTP" %in% varNumeric)) | (length(varNumeric) < 2)) {
+    stop("Invalid numeric variables given. Vector must be made of strings. Vector must contain PWGTP and have length >= 2.")
+  }
+  # Numeric variables to be returned
+  pums <- numVarSelect(pums, varNumeric)
+  
+  # Categorical variables to be returned
+  pums <- catVarSelect(pums, varCategorical)
+  
+  class(pums) <- c("census", class(pums))
+  return (pums)
+}
+
 
 ```
 

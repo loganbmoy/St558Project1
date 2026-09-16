@@ -52,22 +52,22 @@ var2024 <- getVars("https://api.census.gov/data/2024/acs/acs1/pums/variables.jso
 Saving all lists in RDS
 
 ```{r}
-variableNames <- list(var2021, var2022, var2023, var2024)
-saveRDS(variableNames, "data/variableNames")
+listVars <- list(var2021, var2022, var2023, var2024)
+saveRDS(listVars, "data/variableNames")
 ```
 
 Making a function to parse API data
 
 ```{r}
-# Loading the RDS
-levels <- readRDS("data/variableNames")
+# Loading the RDS, probably could have put this in a function, but I would have to pass it through the helpers...
+varData <- readRDS("data/variableNames")
 
-# Helper function that takes url and returns output of GET as a tibble
+# Helper function that takes url and gives us the content as a tibble
 getUrlInfo <- function(url) {
   dataInfo <- GET(url)
-  return (as_tibble(dataInfo))
+  parsed <- fromJSON(rawToChar(dataInfo$content))
+  return (as_tibble(parsed))
 }
-
 
 # Helper for converting Census time codes to midpoint times
 parse_time_midpoint <- function(x) {
@@ -86,7 +86,7 @@ parse_time_midpoint <- function(x) {
 
 # Helper function for selecting numeric vars in pums
 # @param pums tibble we selecting vars from
-# @param varNumeric 
+# @param varNumeric string vector of numeric vars we want
 # @throws error when varNumeric does not contain numeric vars
 numVarSelect <- function(pums, varNumeric) {
   # Check if varNumeric contains legal variables
@@ -107,9 +107,23 @@ numVarSelect <- function(pums, varNumeric) {
   return (pums)
 }
 
-# Helper function for returning categorical variables
-catVarSelect <- function(pums, varCategorical) {
-  
+# Helper function for selecting categorical vars in pums
+# @param pums tibble we selecting vars from
+# @param year we selecting vars for
+# @param varCategorical string vector of categorical vars we want
+# @throws error when varCategorical does not contain categorical vars
+catVarSelect <- function(pums, year, varCategorical) {
+  # Check if varCategorical contains legal variables
+  legal <- c("FER", "HHL", "SCH", "SCHL", "SEX")
+  if (!(all(varCategorical %in% legal))) {
+    stop("varCategorical contains variables that aren't categorical.")
+  }
+  yearVar <- varData[[year - 2020]]
+  # Loop that makes varCategorical variables in pums categorical
+  for (v in varCategorical) {
+    # values and items takes you to factor levels (numbers)
+    pums[[v]] <- factor(pums[[v]], levels = names(yearVar[[v]]$values$item), labels = unlist(yearVar[[v]]$values$item))
+  }
   return (pums)
 }
 
@@ -125,8 +139,7 @@ catVarSelect <- function(pums, varCategorical) {
 # @throws error when varCategorical length == 0
 #
 getPUMSData <- function(url, year = 2024, varNumeric = c("AGEP", "PWGTP"), varCategorical = c("SEX") ) {
-  pums <- getUrlInfo(url)
-  
+
   # Check if the year is valid
   if (!(year %in% c(2021, 2022, 2023, 2024))) {
     stop("Invalid year given. Year must be numeric and between 2021-2024 (inclusive).")
@@ -136,16 +149,28 @@ getPUMSData <- function(url, year = 2024, varNumeric = c("AGEP", "PWGTP"), varCa
   if ((!("PWGTP" %in% varNumeric)) | (length(varNumeric) < 2)) {
     stop("Invalid numeric variables given. Vector must be made of strings. Vector must contain PWGTP and have length >= 2.")
   }
+  
+  # Check if the varCategorical is valid
+  if (length(varCategorical)  == 0) {
+    stop("Vector must be made of strings. Vector must have length > 0.")
+  }
+  
+  # Getting the tibble
+  pums <- getUrlInfo(url)
+  
+  # Dropping things we dont need
+  wanted <- c(varNumeric, varCategorical)
+  pums <- pums[, wanted, drop = FALSE]
+  
   # Numeric variables to be returned
   pums <- numVarSelect(pums, varNumeric)
   
   # Categorical variables to be returned
-  pums <- catVarSelect(pums, varCategorical)
+  pums <- catVarSelect(pums, year, varCategorical)
   
   class(pums) <- c("census", class(pums))
   return (pums)
 }
-
 
 ```
 

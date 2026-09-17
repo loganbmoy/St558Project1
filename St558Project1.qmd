@@ -79,7 +79,7 @@ varData <- readRDS("data/variableNames")
 geoValidator <- function(year, geoLvl, geoVal) {
   
   # Only one geography level allowed
-  if (length(geography) != 1) {
+  if (length(geoLvl) != 1) {
     stop("Only one geography level allowed.")
   }
   
@@ -94,9 +94,9 @@ geoValidator <- function(year, geoLvl, geoVal) {
   # Making sure geoLvl is caps and deals with Year 2021 and 2022 case
   geoLvl <- switch(
     geoLvl,
-    Region   = "REGION",
-    Division = "DIVISION",
-    State    = if (year <= 2022) "ST" else "STATE"
+    REGION   = "REGION",
+    DIVISION = "DIVISION",
+    STATE    = if (year <= 2022) "ST" else "STATE"
   )
 
   # Obtain valid values from RDS, names are numbers and its value is the label
@@ -114,7 +114,7 @@ geoValidator <- function(year, geoLvl, geoVal) {
 
   # Make sure the geoVal is actually a valid option
   if (!(geoVal %in% validVals)) {
-    stop(paste("Invalid value for", geography, ". Must be one of:", paste(validVals, collapse = ", ")))
+    stop(paste("Invalid value for", geoLvl, ". Must be one of:", paste(validVals, collapse = ", ")))
   }
   return (list(geoLvl = geoLvl, geoVal = geoVal))
 }
@@ -221,7 +221,7 @@ fixCate <- function(pums, year, varCategorical) {
 # Parses the data, uses above helper functions.
 # Gives us a tibble of data from Census API. 
 # Subsets the data based on geography, year, and vars
-# @param geoLvl string the geography level we want
+# @param geoLvl string the geography level we want, default is STATE
 # @param geoVal string the value of the geography level
 # @param year int the year, default 2024
 # @param varNumeric string a vector of numeric variables to return, default c("AGEP", "PWGTP") 
@@ -230,7 +230,7 @@ fixCate <- function(pums, year, varCategorical) {
 # @throws error when year is not 2021-2024
 # @throws error when varNumeric does not contain PWGTP or length < 2
 # @throws error when varCategorical length == 0
-getPUMSData <- function(geoLvl = "State", geoVal = NULL, year = 2024, varNumeric = c("AGEP", "PWGTP"), varCategorical = c("SEX") ) {
+getYearData <- function(geoLvl = "STATE", geoVal = NULL, year = 2024, varNumeric = c("AGEP", "PWGTP"), varCategorical = c("SEX") ) {
 
   # Check if the year is valid
   if (!(year %in% c(2021, 2022, 2023, 2024))) {
@@ -244,7 +244,7 @@ getPUMSData <- function(geoLvl = "State", geoVal = NULL, year = 2024, varNumeric
   
   # Check if varNumeric contains legal variables
   legalN <- c("AGEP", "GASP", "GRPIP", "JWAP", "JWDP", "JWMNP", "PWGTP")
-  if (!(all(varNumeric %in% legal))) {
+  if (!(all(varNumeric %in% legalN))) {
     stop("varNumeric contains variables that aren't numeric.")
   }
   
@@ -255,7 +255,7 @@ getPUMSData <- function(geoLvl = "State", geoVal = NULL, year = 2024, varNumeric
   
   # Check if varCategorical contains legal variables
   legalC <- c("FER", "HHL", "SCH", "SCHL", "SEX")
-  if (!(all(varCategorical %in% legal))) {
+  if (!(all(varCategorical %in% legalC))) {
     stop("varCategorical contains variables that aren't categorical.")
   }
   
@@ -266,7 +266,7 @@ getPUMSData <- function(geoLvl = "State", geoVal = NULL, year = 2024, varNumeric
   urlString <- createURL(validGeo[[1]], validGeo[[2]], year, varNumeric, varCategorical)
   
   # Getting the tibble
-  pums <- getUrlInfo(url)
+  pums <- getUrlInfo(urlString)
   
   # Numeric variables
   pums <- fixNum(pums, varNumeric)
@@ -282,23 +282,46 @@ getPUMSData <- function(geoLvl = "State", geoVal = NULL, year = 2024, varNumeric
 ```
 
 
-Using the function to get data from years 2021-2024
+Using the function to get data from year 2021
 
 ```{r}
 # Data from 2021
-
-# Data from 2022
-
-# Data from 2023
-
-# Data from 2024
+example2021 <- getYearData(geoLvl = "DIVISION", year = 2021, varNumeric = c("AGEP", "PWGTP"), varCategorical = c("SEX")) 
 ```
 
 ### Combining Years function
 
 ```{r}
-#| echo: false
-2 * 2
+# Allows you to get multiple years worth of data from Census API 
+# @param year can be a vector of years
+# rest comes from getYearData
+getCensusData <- function(geoLvl = "STATE", geoVal = NULL, year = 2024, varNumeric = c("AGEP", "PWGTP"), varCategorical = c("SEX")) {
+
+  # Check years
+  if (!all(year %in% c(2021, 2022, 2023, 2024))) {
+    stop("Invalid year given. Year must be numeric and between 2021-2024 (inclusive).")
+  }
+  
+  # Better to use some type of apply function, but not covered yet
+  pums <- getYearData(geoLvl, geoVal, year[1], varNumeric, varCategorical)
+  pums$YEAR <- year[1]
+  dataList <- list(pums)
+  
+  if (length(year) >= 2) {
+    for (i in 2:length(year)) {
+      pums <- getYearData(geoLvl, geoVal, year[i], varNumeric, varCategorical)
+      pums$YEAR <- year[i]
+      dataList[[length(dataList) + 1]] <- pums
+    }
+  }
+
+  # Combine all years
+  final <- bind_rows(dataList)
+  class(final) <- c("census", class(final))
+
+  return (final)
+}
+
 ```
 
 

@@ -129,35 +129,43 @@ geoValidator <- function(year, geoLvl, geoVal) {
 # returns url string which gets used by other functions to retrieve data
 createURL <- function(geoLvl, geoVal, year, varNumeric, varCategorical) {
   
-  # Starting URL
-  url <- "https://api.census.gov/data/"
+  # Variables we want with commas btwn for url
+  vars <- paste(c(varNumeric, varCategorical), collapse = ",")
   
-  # Adding year
-  url <- paste0(url, year, "/acs/acs1/pums?get=")
-  
-  # Variables to use and adding geo lvl to url
-  vars <- paste(c(varNumeric, varCategorical), collapse = ",")    
-  url <- paste0(url, vars, "&for=", geoLvl, ":")
-  
-  # Adding geoVal
-  if (is.null(geoVal)) {
-    url <- paste0(url, "*")
-  } else {
-    url <- paste0(url, geoVal)
-  }
-  
-  # Adding the key
-  url <- paste0(url, "&key=", censusKey)
-  return (url)
+  # Overwriting geoVal NULL with * for all
+  geoVal <- if (is.null(geoVal)) "*" else geoVal
+
+  # Pasting
+  urlString <- paste0(
+    "https://api.census.gov/data/",
+    year,
+    "/acs/acs1/pums?get=",
+    vars,
+    "&for=",
+    geoLvl,
+    ":",
+    geoVal,
+    "&key=",
+    censusKey
+  )
+  return (urlString)
 }
 
+
 # Helper function that takes url and gives us the content as a tibble
-getUrlInfo <- function(url) {
+getUrlInfo <- function(urlString) {
   
-  dataInfo <- GET(url)
+  dataInfo <- GET(urlString)
   parsed <- fromJSON(rawToChar(dataInfo$content))
   
-  return (as_tibble(parsed))
+  # Col names are the first to appear, need to use subsetting to get them
+  parsedNames <- parsed[1, ]
+  parsed <- parsed[-1, , drop = FALSE]
+  colnames(parsed) <- parsedNames
+  
+  parsed <- as_tibble(parsed)
+  
+  return (parsed)
 }
 
 # Helper for converting Census time codes to midpoint times
@@ -281,7 +289,6 @@ getYearData <- function(geoLvl = "STATE", geoVal = NULL, year = 2024, varNumeric
 
 ```
 
-
 Using the function to get data from year 2021
 
 ```{r}
@@ -323,6 +330,14 @@ getCensusData <- function(geoLvl = "STATE", geoVal = NULL, year = 2024, varNumer
 }
 
 ```
+
+Example of multiple years function
+```{r}
+# Data from 2021
+example20212 <- getCensusData(geoLvl = "STATE", geoVal = "49", year = c(2021, 2022), varNumeric = c("PWGTP", "GRPIP"), varCategorical = c("HHL")) 
+```
+
+
 
 
 ## Generic function for summarizing

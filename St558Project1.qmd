@@ -22,6 +22,7 @@ SADDASDSSDASDSDSADASD
 
 ```{r}
 #| include: false
+#| # Added later, wasnt sure we needed a key so never passed it in functions
 censusKey <- "aa4f981daae426a93d33caa6ea44623c6ad2d353"
 ```
 
@@ -45,24 +46,23 @@ getVars <- function(url) {
 Using the function to get variable names from years 2021-2024
 
 ```{r}
-# Vars from 2021
-var2021 <- getVars("https://api.census.gov/data/2021/acs/acs1/pums/variables.json")
-
-# Vars from 2022
-var2022 <- getVars("https://api.census.gov/data/2022/acs/acs1/pums/variables.json")
-
-# Vars from 2023
-var2023 <- getVars("https://api.census.gov/data/2023/acs/acs1/pums/variables.json")
-
-# Vars from 2024
-var2024 <- getVars("https://api.census.gov/data/2024/acs/acs1/pums/variables.json")
-```
-
-Saving all lists in RDS
-
-```{r}
-listVars <- list(var2021, var2022, var2023, var2024)
-saveRDS(listVars, "data/variableNames")
+if (!file.exists("data/variableNames")) {
+  # Vars from 2021
+  var2021 <- getVars("https://api.census.gov/data/2021/acs/acs1/pums/variables.json")
+  
+  # Vars from 2022
+  var2022 <- getVars("https://api.census.gov/data/2022/acs/acs1/pums/variables.json")
+  
+  # Vars from 2023
+  var2023 <- getVars("https://api.census.gov/data/2023/acs/acs1/pums/variables.json")
+  
+  # Vars from 2024
+  var2024 <- getVars("https://api.census.gov/data/2024/acs/acs1/pums/variables.json")
+  
+  #Saving all lists in RDS
+  listVars <- list(var2021, var2022, var2023, var2024)
+  saveRDS(listVars, "data/variableNames")
+}
 ```
 
 ### Making a function to parse API data
@@ -96,7 +96,7 @@ geoValidator <- function(year, geoLvl, geoVal) {
     geoLvl,
     REGION   = "REGION",
     DIVISION = "DIVISION",
-    STATE    = if (year <= 2022) "ST" else "STATE"
+    STATE    =  "STATE" 
   )
 
   # Obtain valid values from RDS, names are numbers and its value is the label
@@ -314,6 +314,7 @@ getCensusData <- function(geoLvl = "STATE", geoVal = NULL, year = 2024, varNumer
   pums$YEAR <- year[1]
   dataList <- list(pums)
   
+  # Starting from 2nd year in vector of years, make sure there is more than 1 year first
   if (length(year) >= 2) {
     for (i in 2:length(year)) {
       pums <- getYearData(geoLvl, geoVal, year[i], varNumeric, varCategorical)
@@ -324,6 +325,7 @@ getCensusData <- function(geoLvl = "STATE", geoVal = NULL, year = 2024, varNumer
 
   # Combine all years
   final <- bind_rows(dataList)
+  final$YEAR <- factor(final$YEAR)
   class(final) <- c("census", class(final))
 
   return (final)
@@ -332,22 +334,135 @@ getCensusData <- function(geoLvl = "STATE", geoVal = NULL, year = 2024, varNumer
 ```
 
 Example of multiple years function
+
 ```{r}
-# Data from 2021
-example20212 <- getCensusData(geoLvl = "STATE", geoVal = "49", year = c(2021, 2022), varNumeric = c("PWGTP", "GRPIP"), varCategorical = c("HHL")) 
+# Data from 2023-4
+example20234 <- getCensusData( geoVal = "49", year = c(2023, 2024), varNumeric = c("PWGTP", "GRPIP"), varCategorical = c("HHL")) 
 ```
-
-
-
 
 ## Generic function for summarizing
 
 ```{r}
+# Helper summary function for our census data (numeric)
+# Calculates the mean and sd. Uses PWGTP as a weight vector
+# Does not look at time variables
+# @param census a census tibble 
+# @param varNumeric string of numeric variables we want
+# @returns a list with means and sd of numeric 
+sumCenNum <- function(census, varNumeric) {
 
+  # Vectors to store means and sds, has same name
+  means <- numeric(length(varNumeric))
+  sds <- numeric(length(varNumeric))
+  names(means) <- varNumeric
+  names(sds) <- varNumeric
+
+  # Calculating the summary stats
+  for (v in varNumeric) {
+    mean <- sum(census[[v]] * census$PWGTP) / sum(census$PWGTP)
+    sd <- sqrt(sum(census[[v]]^2 * census$PWGTP) / sum(census$PWGTP) - w_mean^2)
+
+    means[v] <- mean
+    sds[v] <- sd
+  }
+
+  return (list(means = means,sd = sds))
+}
+
+# Helper summary function for our census data (categorical)
+# @param census a census tibble 
+# @param varCategorical string of numeric variables we want
+# @returns a list with counts
+sumCenCat <- function(census, varCategorical) {
+  
+  counts <- list()
+
+  for (v in varCategorical) {
+    lvl <- levels(census[[v]])
+    countLvl <- numeric(length(lvl))
+    names(countLvl) <- lvl
+    # Summing for every level of a factor based on weight
+    for (l in lvl) {
+      countLvl[l] <- sum(census$PWGTP[census[[v]] == l], na.rm = TRUE)
+    }
+    counts[[v]] <- countLvl
+  }
+  return (counts)
+
+}
+
+# Summary function for our census data
+# @param census a census tibble coming from getCensusData() (as it has year variable)
+# @param varNumeric string of numeric variables we want, default is all
+# @param varCategorical string of categorical variables we want, default is all
+# @returns a list with means and sd of numeric and counts of categorical
+# @throws error when vector of variables contains variables not in census or when using
+#   weight or time variables
+summary.census <- function(census, varNumeric = c("AGEP", "GASP", "GRPIP", "JWMNP"), varCategorical = c("FER", "HHL", "SCH", "SCHL", "SEX", "YEAR")) {
+  
+  # Check if varNumeric contains legal variables
+  legalN <- c("AGEP", "GASP", "GRPIP", "JWMNP")
+  if (!(all(varNumeric %in% legalN))) {
+    stop("varNumeric contains variables that aren't numeric. Or it contains time or weight variables.")
+  }
+  
+  # Check if varCategorical contains legal variables
+  legalC <- c("FER", "HHL", "SCH", "SCHL", "SEX", "YEAR")
+  if (!(all(varCategorical %in% legalC))) {
+    stop("varCategorical contains variables that aren't categorical.")
+  }
+  
+  summaryC <- sumCenNum(census, varNumeric)
+  summaryC$count <- sumCenCat(census, varCategorical)
+  
+  return (summaryC)
+}
 ```
 
+## Generic function for plotting
 
+```{r}
+# Plots a boxplot given a numeric and a categorical var
+# @param census a census tibble coming from getCensusData() (as it has year variable)
+# @param varNumeric numeric variables we want
+# @param varCategorical categorical variable we want
+# @returns boxplot
+# @throws error when we have more than 1 num or cate var
+# @throws error when error when vector of variables contains variables not in census or when using
+#   weight or time variables
+plot.census <- function(census, varNumeric, varCategorical) {
+  
+  # Check if only 1 var is used
+  if (length(varNumeric) != 1 | length(varCategorical) != 1) {
+    stop("Only 1 numeric and categorical variable can be used.");
+  }
+  
+  # Check if varNumeric contains legal variables
+  legalN <- c("AGEP", "GASP", "GRPIP", "JWMNP")
+  if (!(all(varNumeric %in% legalN))) {
+    stop("varNumeric contains variables that aren't numeric. Or it contains time or weight variables.")
+  }
+  
+  # Check if varCategorical contains legal variables
+  legalC <- c("FER", "HHL", "SCH", "SCHL", "SEX", "YEAR")
+  if (!(all(varCategorical %in% legalC))) {
+    stop("varCategorical contains variables that aren't categorical.")
+  }
+  
+  
+  
+  # Boxplot
+  ggplot(census, aes(x = .data[[varCategorical]], y = .data[[varNumeric]], weight = PWGTP)) + geom_boxplot() + 
+    labs(x = varCategorical, y = varNumeric, title = paste(varNumeric, "by", varCategorical)) + 
+    theme_minimal()
+  
+}
+```
 
 # Example: Investigating the _____________________
+```{r}
+ggplot(example20234 ) + geom_boxplot(aes(x = HHL, y = .data[['GRPIP']], weight = PWGTP)) + 
+  theme_minimal()
+```
 
 

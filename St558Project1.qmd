@@ -113,7 +113,7 @@ geoValidator <- function(year, geoLvl, geoVal) {
     geoLvl,
     REGION   = "REGION",
     DIVISION = "DIVISION",
-    STATE    =  "STATE" 
+    STATE    =  if_else(year < 2023, "ST", "STATE") 
   )
 
   # Obtain valid values from RDS, names are numbers and its value is the label
@@ -150,7 +150,12 @@ createURL <- function(geoLvl, geoVal, year, varNumeric, varCategorical) {
   vars <- paste(c(varNumeric, varCategorical), collapse = ",")
   
   # Overwriting geoVal NULL with * for all
-  geoVal <- if (is.null(geoVal)) "*" else geoVal
+  geoVal <- if_else(is.null(geoVal), "*", geoVal)
+  
+  # State needs to be state not st
+  if (toupper(geoLvl) == "ST") {
+    geoLvl <- "STATE"
+  }
 
   # Pasting
   urlString <- paste0(
@@ -549,8 +554,21 @@ summary(example20234)
 ```
 
 ```{r}
-summary(example20212024)
+summary(example20212024, "AGEP", "FER")
 ```
+Some errors
+
+```{r}
+tryCatch({
+  summary(example20212024, "AGEP", "SSS")
+  },
+  error = function(e) {
+    geterrmessage() == "varCategorical contains variables that aren't categorical."
+  }
+) 
+```
+
+
 
 ## Function for plotting
 
@@ -598,14 +616,46 @@ plot.census <- function(census, varNumeric, varCategorical) {
 plot(example20234, "GRPIP", "HHL")
 ```
 
-
-# Example of Process
-
-Let's say I was interested in the relationship of  
+Plot errors
 
 ```{r}
-
+tryCatch({
+  plot(example20212024, "AGEP", c("FER", "YEAR"))
+  },
+  error = function(e) {
+    geterrmessage() == "Only 1 numeric and categorical variable can be used."
+  }
+)
 ```
 
 
+# Example of Process
+
+Let's say I was interested in the relationship of how much a Kentucky resident pays for gas by their fertility (). People who have given birth recently dont drive as much as does who do.
+
+First I'll give my getCensusData function the geoVal of 21 which is Kentucky (I dont need to give it a State as State is default). Then a vector of years and the numeric variables I want (gas prices and the weight vector) and the categorical variable I am interested in (fertility). I added some extra variables so we can request by name the ones we want later.
+
+```{r}
+proex <- getCensusData(geoVal = "21", year = c(2021, 2022, 2023, 2024), varNumeric = c("GASP", "PWGTP", "AGEP", "JWAP"), varCategorical = c("SEX", "FER"))
+
+```
+
+After that I can now look at a summary of the data given back by the function with just a summary() as I made a generic one earlier.
+
+```{r}
+summary(proex, varNumeric = "GASP", varCategorical = "FER")
+```
+
+Summary looks fine. Gas expenses has a large sd compared to its mean. As for fertility, most people seem to make up the N/A which makes sense as only a portion of females can give birth.
+
+Lets compare their distributions below.
+
+
+```{r}
+plot(proex, "GASP", "FER")
+```
+
+Maybe giving birth/being pregnant could have an effect on how much you spend on gas a month. Not being pregnant, N/A and No, seem to have a similar distribution, while Yes could slightly differ graphically. What is strange is that all three categories have the same outliers.
+
+Overall it looks to hard to tell is the distribution differs between fertility status.
 

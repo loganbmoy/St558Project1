@@ -11,14 +11,19 @@ library(ggplot2)
 library(httr)
 library(jsonlite)
 library(lubridate)
+library(quantreg)
 ```
 
 # Introduction
 
-SADDASDSSDASDSDSADASD
+For this assignment we will investigate the data within the PUMS Census API. PUMS includes information about America's economy and population. We'll examine data from years 2021-2024 and look at the variables AGEP, GASP, GRPIP, JWAP, JWDP, JWMNP, PWGTP, FER, HHL, SCH, SCHL, SEX, ST/STATE , REGION, and DIVISION.
+
+First we need some functions to actually grab the data from that API. Since the data is in a JSON format we'll need to use functions in httr and jsonlite package to obtain the data. 
+
+Since the API gives us information about the variables in it, we'll read those in as well. This helps us get information like factor names for categorical variables.
 
 
-## Data Processing from PUMS
+# Data Processing from PUMS
 
 ```{r}
 #| include: false
@@ -27,9 +32,7 @@ censusKey <- "aa4f981daae426a93d33caa6ea44623c6ad2d353"
 ```
 
 
-### Function that grabs variables from JSON 
-
-Looks at the variables: AGEP, GASP, GRPIP, JWAP, JWDP, JWMNP, PWGTP, FER, HHL, SCH, SCHL, SEX, ST (for 2021, 2022)/STATE (for 2023, 2024), REGION, and DIVISION
+## Function that grabs variables from JSON 
 
 ```{r}
 varNames <- c("AGEP", "GASP", "GRPIP", "JWAP", "JWDP", "JWMNP", "PWGTP", "FER", "HHL", "SCH", "SCHL", "SEX", "ST", "STATE", "REGION",  "DIVISION")
@@ -65,7 +68,21 @@ if (!file.exists("data/variableNames")) {
 }
 ```
 
-### Making a function to parse API data
+## Making a function to parse API data
+
+Here we'll start reading in the data. Process is broken up into multiple helper functions.
+
+We read in variable name data we stored earlier.
+
+We make sure the geography levels and values are legal.
+
+We have a function that creates url information that makes an url that lets us request the year, geography, and variables we want.
+
+This url is then used by another function which turns the data from that url into a tibble.
+
+Then we make sure the tibble's columns are in the correct format.
+
+All of this gets wrapped up in a wrapper function that gives us that year's information.
 
 ```{r}
 # Loading the RDS, probably could have put this in a function, but I would have to pass it through the helpers...
@@ -289,14 +306,86 @@ getYearData <- function(geoLvl = "STATE", geoVal = NULL, year = 2024, varNumeric
 
 ```
 
+### Examples of the getYearData function
+
 Using the function to get data from year 2021
 
 ```{r}
-# Data from 2021
 example2021 <- getYearData(geoLvl = "DIVISION", year = 2021, varNumeric = c("AGEP", "PWGTP"), varCategorical = c("SEX")) 
 ```
 
-### Combining Years function
+Using the function to get data from year 2024
+
+```{r}
+example2024 <- getYearData( varNumeric = c("GASP", "GRPIP", "JWAP", "PWGTP"), varCategorical = c("SCH", "SCHL", "SEX")) 
+```
+
+Proof of Error handling
+
+Handling of case of using incorrect var categorical 
+
+```{r}
+tryCatch({
+  getYearData(varNumeric = c("GASP", "GRPIP", "JWAP", "PWGTP"), varCategorical = c("SCH", "SCHL", "ASD"))
+  },
+  error = function(e) {
+    geterrmessage() == "varCategorical contains variables that aren't categorical."
+  }
+) 
+
+tryCatch({
+  getYearData(varNumeric = c("GASP", "GRPIP", "JWAP", "PWGTP"), varCategorical = NULL)
+  },
+  error = function(e) {
+    geterrmessage() == "Vector must be made of strings. Vector must have length > 0."
+  }
+) 
+
+```
+
+Bad year and not using PWGTP
+
+```{r}
+tryCatch({
+  getYearData(year = 2222, varNumeric = c("GASP", "GRPIP", "JWAP"), varCategorical = c("SCH", "SCHL", "ASD"))
+  },
+  error = function(e) {
+    geterrmessage() == "Invalid year given. Year must be numeric and between 2021-2024 (inclusive)."
+  }
+) 
+
+tryCatch({
+  getYearData(varNumeric = c("GASP", "GRPIP", "JWAP"), varCategorical = NULL)
+  },
+  error = function(e) {
+    geterrmessage() == "Invalid numeric variables given. Vector must be made of strings. Vector must contain PWGTP and have length >= 2."
+  }
+)
+```
+
+Geo lvl error
+
+```{r}
+tryCatch({
+  getYearData(geoLvl = "asd", varNumeric = c("GASP", "GRPIP", "JWAP", "PWGTP"), varCategorical = "SCHL")
+  },
+  error = function(e) {
+    geterrmessage() == "Invalid geoLvl given. Valid options are Region, Division, or State."
+  }
+) 
+
+tryCatch({
+  getYearData(geoLvl = c("STATE", "REGION"), varNumeric = c("GASP", "GRPIP", "JWAP", "PWGTP"), varCategorical = "SCHL")
+  },
+  error = function(e) {
+    geterrmessage() == "Only one geography level allowed."
+  }
+) 
+```
+
+## Combining Years function
+
+Here is the final form of the function we use to get data from the API. This function uses the previous getYearData and a loop to get data from multiple years. This allows the user to compare two+ years (although this function can still take 1 year).
 
 ```{r}
 # Allows you to get multiple years worth of data from Census API 
@@ -333,14 +422,38 @@ getCensusData <- function(geoLvl = "STATE", geoVal = NULL, year = 2024, varNumer
 
 ```
 
-Example of multiple years function
+### Examples of getCensusData function
 
 ```{r}
 # Data from 2023-4
 example20234 <- getCensusData( geoVal = "49", year = c(2023, 2024), varNumeric = c("PWGTP", "GRPIP"), varCategorical = c("HHL")) 
 ```
 
-## Generic function for summarizing
+
+```{r}
+# Data from 
+example20212024 <- getCensusData(geoLvl = "REGION", geoVal = "2", year = c(2021, 2024), varNumeric = c("PWGTP", "GRPIP", "GASP", "AGEP", "JWAP"), varCategorical = c("HHL", "FER", "SEX")) 
+```
+
+Bad years
+
+```{r}
+tryCatch({
+  getCensusData(year = c(2022, 1111), geoLvl = "REGION", varNumeric = c("GASP", "GRPIP", "JWAP", "PWGTP"), varCategorical = "SCHL")
+  },
+  error = function(e) {
+    geterrmessage() == "Invalid year given. Year must be numeric and between 2021-2024 (inclusive)."
+  }
+) 
+```
+
+
+# Generic functions
+
+Now that we have some data, we can do some exploratory data analysis on it. We want to see what the data looks like through summaries and plots. We want to look at numeric data's mean and sd. For categorical we'll just look at their counts. Since there is a weight variable, that will be taken into account in the following functions.
+
+
+## Function for summarizing
 
 ```{r}
 # Helper summary function for our census data (numeric)
@@ -360,7 +473,7 @@ sumCenNum <- function(census, varNumeric) {
   # Calculating the summary stats
   for (v in varNumeric) {
     mean <- sum(census[[v]] * census$PWGTP) / sum(census$PWGTP)
-    sd <- sqrt(sum(census[[v]]^2 * census$PWGTP) / sum(census$PWGTP) - w_mean^2)
+    sd <- sqrt(sum(census[[v]]^2 * census$PWGTP) / sum(census$PWGTP) - mean^2)
 
     means[v] <- mean
     sds[v] <- sd
@@ -398,16 +511,26 @@ sumCenCat <- function(census, varCategorical) {
 # @returns a list with means and sd of numeric and counts of categorical
 # @throws error when vector of variables contains variables not in census or when using
 #   weight or time variables
-summary.census <- function(census, varNumeric = c("AGEP", "GASP", "GRPIP", "JWMNP"), varCategorical = c("FER", "HHL", "SCH", "SCHL", "SEX", "YEAR")) {
+summary.census <- function(census, varNumeric = NULL, varCategorical = NULL) {
   
   # Check if varNumeric contains legal variables
   legalN <- c("AGEP", "GASP", "GRPIP", "JWMNP")
+  
+  if (is.null(varNumeric)) {
+    varNumeric <- intersect(legalN, names(census))
+  }
+  
   if (!(all(varNumeric %in% legalN))) {
     stop("varNumeric contains variables that aren't numeric. Or it contains time or weight variables.")
   }
   
   # Check if varCategorical contains legal variables
   legalC <- c("FER", "HHL", "SCH", "SCHL", "SEX", "YEAR")
+  
+  if (is.null(varCategorical)) {
+    varCategorical <- intersect(legalC, names(census))
+  }
+  
   if (!(all(varCategorical %in% legalC))) {
     stop("varCategorical contains variables that aren't categorical.")
   }
@@ -419,7 +542,17 @@ summary.census <- function(census, varNumeric = c("AGEP", "GASP", "GRPIP", "JWMN
 }
 ```
 
-## Generic function for plotting
+### Examples of summary
+
+```{r}
+summary(example20234)
+```
+
+```{r}
+summary(example20212024)
+```
+
+## Function for plotting
 
 ```{r}
 # Plots a boxplot given a numeric and a categorical var
@@ -434,7 +567,7 @@ plot.census <- function(census, varNumeric, varCategorical) {
   
   # Check if only 1 var is used
   if (length(varNumeric) != 1 | length(varCategorical) != 1) {
-    stop("Only 1 numeric and categorical variable can be used.");
+    stop("Only 1 numeric and categorical variable can be used.")
   }
   
   # Check if varNumeric contains legal variables
@@ -459,10 +592,20 @@ plot.census <- function(census, varNumeric, varCategorical) {
 }
 ```
 
-# Example: Investigating the _____________________
+### Example of the plot function
+
 ```{r}
-ggplot(example20234 ) + geom_boxplot(aes(x = HHL, y = .data[['GRPIP']], weight = PWGTP)) + 
-  theme_minimal()
+plot(example20234, "GRPIP", "HHL")
 ```
+
+
+# Example of Process
+
+Let's say I was interested in the relationship of  
+
+```{r}
+
+```
+
 
 

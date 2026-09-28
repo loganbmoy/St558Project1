@@ -318,13 +318,15 @@ getYearData <- function(geoLvl = "STATE", geoVal = NULL, year = 2024, varNumeric
 Using the function to get data from year 2021
 
 ```{r}
-example2021 <- getYearData(geoLvl = "DIVISION", year = 2021, varNumeric = c("AGEP", "PWGTP"), varCategorical = c("SEX")) 
+example2021 <- getYearData(geoLvl = "DIVISION", year = 2021, varNumeric = c("AGEP", "PWGTP"), varCategorical = c("SEX"))
+example2021
 ```
 
 Using the function to get data from year 2024
 
 ```{r}
 example2024 <- getYearData( varNumeric = c("GASP", "GRPIP", "JWAP", "PWGTP"), varCategorical = c("SCH", "SCHL", "SEX")) 
+example2024
 ```
 
 Proof of Error handling
@@ -434,12 +436,14 @@ getCensusData <- function(geoLvl = "STATE", geoVal = NULL, year = 2024, varNumer
 ```{r}
 # Data from 2023-4
 example20234 <- getCensusData( geoVal = "49", year = c(2023, 2024), varNumeric = c("PWGTP", "GRPIP"), varCategorical = c("HHL")) 
+example20234
 ```
 
 
 ```{r}
 # Data from 
 example20212024 <- getCensusData(geoLvl = "REGION", geoVal = "2", year = c(2021, 2024), varNumeric = c("PWGTP", "GRPIP", "GASP", "AGEP", "JWAP"), varCategorical = c("HHL", "FER", "SEX")) 
+example20212024
 ```
 
 Bad years
@@ -639,7 +643,7 @@ First I'll give my getCensusData function the geoVal of 21 which is Kentucky (I 
 
 ```{r}
 proex <- getCensusData(geoVal = "21", year = c(2021, 2022, 2023, 2024), varNumeric = c("GASP", "PWGTP", "AGEP", "JWAP"), varCategorical = c("SEX", "FER"))
-
+proex
 ```
 
 After that I can now look at a summary of the data given back by the function with just a summary() as I made a generic one earlier.
